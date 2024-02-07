@@ -12,7 +12,9 @@ import secrets
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding  # Import the padding module
 from cryptography.hazmat.backends import default_backend
- 
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
 #these are for the sha3-256 
 import hashlib 
 import hmac
@@ -27,22 +29,15 @@ from cryptography.hazmat.backends import default_backend
 from Crypto.Hash import CMAC
 from Crypto.Cipher import AES
 
-def generate_keys_ecdsa():
-    private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+
+def generate_ecdsa_keys():
+    private_key = ec.generate_private_key(
+        ec.SECP256R1(), 
+        backend=default_backend()
+    )
     public_key = private_key.public_key()
+    return private_key, public_key
 
-    private_key_bytes = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-
-    public_key_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    )
-
-    return private_key_bytes, public_key_bytes
 def generate_ecdsa_signature(private_key, message):
     signature = private_key.sign(
         message,
@@ -50,35 +45,57 @@ def generate_ecdsa_signature(private_key, message):
     )
     return signature
 
-def generate_key_pair_rsa():
+def verify_ecdsa_signature(public_key, signature, message):
+    try:
+        public_key.verify(
+            signature,
+            message,
+            ec.ECDSA(hashes.SHA256())
+        )
+        return True
+    except Exception as e:
+        return False
+
+
+def generate_rsa_keys():
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,
         backend=default_backend()
     )
     public_key = private_key.public_key()
+    return private_key, public_key
 
-    # Serialize private key to PEM format
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption()
+def sign_message(message, private_key):
+    signature = private_key.sign(
+        message,
+        padding.PSS(
+            mgf=padding.MGF1(hashes.SHA256()),
+            salt_length=padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
     )
+    return signature
 
-    # Serialize public key to PEM format
-    public_pem = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    )
-
-    return private_pem, public_pem
-
+def verify_signature(public_key, signature, message):
+    try:
+        public_key.verify(
+            signature,
+            message,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return True
+    except Exception as e:
+        print("Signature verification failed:", e)
+        return False
+    
 def encrypt_rsa(plaintext, public_key):
     # Load the public key
-    public_key = serialization.load_pem_public_key(
-        public_key,
-        backend=None  # Use the default backend
-    )
+   
 
     # Encrypt the plaintext
     ciphertext = public_key.encrypt(
@@ -91,13 +108,10 @@ def encrypt_rsa(plaintext, public_key):
     )
 
     return ciphertext
+
 def decrypt_rsa(ciphertext, private_key):
     # Load the private key
-    private_key = serialization.load_pem_private_key(
-        private_key,
-        password=None,  # No password for private key
-        backend=None     # Use the default backend
-    )
+  
 
     # Decrypt the ciphertext
     plaintext = private_key.decrypt(
@@ -111,6 +125,43 @@ def decrypt_rsa(ciphertext, private_key):
 
     return plaintext
 
+def generate_gcm_tag(key, iv, plaintext):
+    # Generate a 16-byte random salt
+    # salt = os.urandom(16)
+
+    # Derive a 32-byte AES key using PBKDF2
+    # kdf = PBKDF2HMAC(
+    #     algorithm=hashes.SHA256(),
+    #     length=32,
+    #     salt=salt,
+    #     iterations=100000,
+    #     backend=default_backend()
+    # )
+    derived_key = key
+
+    # Create a new AES-GCM cipher
+    cipher = Cipher(algorithms.AES(derived_key), modes.GCM(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+
+    # Encrypt the plaintext
+    # encryptor.authenticate_additional_data(b"authenticated but not encrypted payload")
+    ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+
+    # Retrieve the GCM tag
+    tag = encryptor.tag
+
+    return tag,ciphertext
+
+def decrypt_gcm(key, iv, ciphertext, tag):
+    # Create a new AES-GCM cipher
+    cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
+    decryptor = cipher.decryptor()
+
+    # Decrypt the ciphertext
+    plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+
+    return plaintext
+
 class ExecuteCrypto(object): # Do not change this 
     def generate_keys(self):
         """Generate keys"""
@@ -118,9 +169,9 @@ class ExecuteCrypto(object): # Do not change this
         random_integer = random.getrandbits(128)
         symmetric_key = random_integer.to_bytes(16, byteorder='big')
 
-        private_key_sender_rsa, public_key_sender_rsa = generate_key_pair_rsa()
-        private_key_receiver_rsa, public_key_receiver_rsa = generate_key_pair_rsa()
-        private_key_sender_ecc , public_key_sender_ecc = generate_keys_ecdsa()
+        private_key_sender_rsa, public_key_sender_rsa = generate_rsa_keys()
+        private_key_receiver_rsa, public_key_receiver_rsa = generate_rsa_keys()
+        private_key_sender_ecc , public_key_sender_ecc = generate_ecdsa_keys()
 
         print("Symmetric Key") # Do not change this
         print(symmetric_key) # Do not change this
@@ -281,8 +332,8 @@ class ExecuteCrypto(object): # Do not change this
 
         elif algo =='RSA-2048-SHA3-256-SIG-GEN': # Do not change this
             
-            message = xor(plaintext,nonce)
-            auth_tag = encrypt_rsa(message,key)
+            auth_tag = sign_message(xor(plaintext,nonce), key)
+
             # Write your script here
 
         elif algo =='ECDSA-256-SHA3-256-SIG-GEN': # Do not change this
@@ -321,6 +372,7 @@ class ExecuteCrypto(object): # Do not change this
             cobj.update(nonce)
             cobj.update(plaintext)
             cmac_tag = cobj.digest()
+            # print("hhhhhhhhhhhhhhhhhhhhhhh",cmac_tag)
             auth_tag_valid = cmac_tag==auth_tag
             # Write your script here
 
@@ -331,14 +383,13 @@ class ExecuteCrypto(object): # Do not change this
             # Write your script here
 
         elif algo =='RSA-2048-SHA3-256-SIG-VRF': # Do not change this
+            auth_tag_valid = verify_signature(key, auth_tag, xor(plaintext,nonce)) # digest = xor(plaintext,nonce)
             
-            digest = xor(plaintext,nonce)
-            auth_tag_valid = encrypt_rsa(digest,key) == auth_tag 
             # Write your script here
 
         elif algo =='ECDSA-256-SHA3-256-SIG-VRF': # Do not change this
             plaintext_nonced = xor(plaintext,nonce)
-            auth_tag_valid = generate_ecdsa_signature(key,plaintext_nonced) == auth_tag 
+            auth_tag_valid = verify_ecdsa_signature(key,auth_tag,plaintext_nonced)
             # Write your script here
 
         else:
@@ -367,7 +418,12 @@ class ExecuteCrypto(object): # Do not change this
     #     # Write your script here
 
     #     if algo == 'AES-128-GCM-GEN': # Do not change this
+
+    #         auth_tag = generate_gcm_tag()
+    #         #generate the GCM tag 
+
     #         # Write your script here
+
 
     #     else:
     #         raise Exception("Unexpected algorithm") # Do not change this
@@ -438,11 +494,30 @@ if __name__ == '__main__': # Do not change this
 
     # Encryption and Decryption Example
     plaintext_message = b"1234567890123456"
-    auth_tag_hmac = crypto_instance.generate_auth_tag('algo_hmac', symmetric_key, plaintext_message, nonce_hmac)
+    # auth_tag_cmac = crypto_instance.generate_auth_tag('AES-128-CMAC-GEN', symmetric_key, plaintext_message, nonce_aes_cmac)
 
-    # Verification
-    is_verified_hmac = crypto_instance.verify_auth_tag('algo_hmac', symmetric_key, plaintext_message, nonce_hmac, auth_tag_hmac)
-    print(f"isverified :{is_verified_hmac}")
+    # # # Verification
+    # is_verified_cmac = crypto_instance.verify_auth_tag('AES-128-CMAC-VRF', symmetric_key, plaintext_message, nonce_aes_cmac, auth_tag_cmac)
+    # print(f"isverified :{is_verified_cmac}")
+ 
+    # auth_tag_hmac = crypto_instance.generate_auth_tag('SHA3-256-HMAC-GEN', symmetric_key, plaintext_message, nonce_hmac)
+
+    # # # Verification
+    # is_verified_hmac = crypto_instance.verify_auth_tag('SHA3-256-HMAC-VRF', symmetric_key, plaintext_message, nonce_hmac, auth_tag_hmac)
+    # print(f"isverified :{is_verified_hmac}")
+
+    # auth_rsa_sha = crypto_instance.generate_auth_tag('RSA-2048-SHA3-256-SIG-GEN', private_key_sender_rsa, plaintext_message, nonce_tag_rsa)
+
+    # # # Verification
+    # is_verified_rsa_sha = crypto_instance.verify_auth_tag('RSA-2048-SHA3-256-SIG-VRF', public_key_sender_rsa, plaintext_message, nonce_tag_rsa, auth_rsa_sha)
+    # print(f"isverified :{is_verified_rsa_sha}")
+
+    # auth_ecdsa_sha = crypto_instance.generate_auth_tag('ECDSA-256-SHA3-256-SIG-GEN', private_key_sender_ecc, plaintext_message, nonce_ecdsa)
+
+    # # # Verification
+    # is_verified_ecdsa_sha = crypto_instance.verify_auth_tag('ECDSA-256-SHA3-256-SIG-VRF', public_key_sender_ecc, plaintext_message, nonce_ecdsa, auth_ecdsa_sha)
+    # print(f"isverified :{is_verified_ecdsa_sha}")
+
 
     # # AES-128-CBC Encryption and Decryption
     # encrypted_aes_cbc = crypto_instance.encrypt('AES-128-CBC-ENC', symmetric_key, plaintext_message, nonce_aes_cbc)
@@ -460,7 +535,7 @@ if __name__ == '__main__': # Do not change this
     # print("\nAES-128-CBC:")
     # print("Plaintext:", plaintext_message)
     # print("Encrypted:", encrypted_aes_cbc)
-    # print("Decrypted:", decrypted_aes_cbc)
+    # print("Decrypted:", decrypted_aes_cbc.decode("ascii"))
 
     # print("\nAES-128-CTR:")
     # print("Plaintext:", plaintext_message)
