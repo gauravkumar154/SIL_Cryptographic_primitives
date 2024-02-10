@@ -1,0 +1,40 @@
+packet_length :130
+ time1_1 :0.7190704345703125 
+ time1_2:0.4990100860595703 
+ keylen1_1 : 16 
+ keylen1_2 :16 
+packet_length :130
+ time1_1 :1.310586929321289 
+ time1_2:0.766754150390625 
+ keylen1_1 : 16 
+ keylen1_2 :16 
+packet_length :130
+ time1_1 :2.2537708282470703 
+ time1_2:1.2903213500976562 
+ keylen1_1 : 2048 
+ keylen1_2 :2048 
+packet_length :130
+ time1_1 :0.8013248443603516 
+ time1_2:0.9813308715820312 
+ keylen1_1 : 256 
+ keylen1_2 :256 
+packet_length :128
+ time1_1 :0.10251998901367188 
+ time1_2:0.6284713745117188 
+ keylen1_1 : 16 
+ keylen1_2 :16 
+packet_length :128
+ time1_1 :1.0445117950439453 
+ time1_2:0.9517669677734375 
+ keylen1_1 : 16 
+ keylen1_2 :16 
+packet_length :128
+ time1_1 :1.1668205261230469 
+ time1_2:1.9812583923339844 
+ keylen1_1 : 2048 
+ keylen1_2 :2048 
+packet_length :130
+ time1_1 :0.9453296661376953 
+ time1_2:0.8916854858398438 
+ keylen1_1 : 16 
+ keylen1_2 :16 
